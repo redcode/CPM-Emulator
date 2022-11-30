@@ -72,32 +72,32 @@ public:
  * BDOS functions.
  * PC register contains the local address.
  */	
-	void function(ZZ80State& state, uint8_t *const memory) {
+	void function(Z80& cpu, uint8_t *const memory) {
 		assert(memory);
-		switch (state.Z_Z80_STATE_MEMBER_PC) {
+		switch (Z80_PC(cpu)) {
 			case CONST_ADDR : {	// constf
 				char c;
 				const auto n = std::cin.readsome(&c, 1);
 				if (!n) {
-					state.Z_Z80_STATE_MEMBER_A = 0x00;
+					Z80_A(cpu) = 0x00;
 				} else {
 					std::cin.putback(c);
-					state.Z_Z80_STATE_MEMBER_A = 0xFF;
+					Z80_A(cpu) = 0xFF;
 				}
 				break;
 			}
 			case CONIN_ADDR : {	// coninf
 				const auto c = std::cin.get();
-				state.Z_Z80_STATE_MEMBER_A = (c & 0x0F);
+				Z80_A(cpu) = (c & 0x0F);
 				break;
 			}
 			case CONOUT_ADDR : {	// coninf
-				std::cout << char(state.Z_Z80_STATE_MEMBER_C);
+				std::cout << char(Z80_C(cpu));
 				break;
 			}
 				
 			default:
-				std::cerr << "Function " << (state.Z_Z80_STATE_MEMBER_PC - BIOS_ADDR) / 3;
+				std::cerr << "Function " << (Z80_PC(cpu) - BIOS_ADDR) / 3;
 				std::cerr << " : Unknown BIOS function!" << std::endl;
 				
 				throw std::runtime_error("Un-emulated BIOS function");

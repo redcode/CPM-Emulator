@@ -24,7 +24,7 @@
 #include <fstream>
 #include <exception>
 
-#include "Z80.h"
+#include <Z80.h>
 #include "bdos.h"
 #include "bios.h"
 
@@ -127,12 +127,17 @@ public:
 		std::cout << std::endl;
 
 		cpu.context = this;
-		cpu.read = Computer::read;
-		cpu.write = Computer::write;
+		cpu.fetch_opcode = cpu.fetch = cpu.nop = cpu.read = reinterpret_cast<Z80Read>(Computer::read);
+		cpu.write = reinterpret_cast<Z80Write>(Computer::write);
 		cpu.in = Computer::in;
 		cpu.out = Computer::out;
-		cpu.int_data = NULL;
+		cpu.nmia = NULL;
+		cpu.inta = NULL;
+		cpu.int_fetch = NULL;
 		cpu.halt = NULL;
+		cpu.hook = NULL;
+		cpu.illegal = NULL;
+		cpu.options = Z80_MODEL_ZILOG_NMOS;
 		z80_power(&cpu, true);
 	};
 	
@@ -142,16 +147,15 @@ public:
  * @param aAddr Memory address where to load the binary.
  */
 	void init(const std::string& aFilename = "", const uint16_t aAddr = 0) {
-		z80_reset(&cpu);
+		z80_instant_reset(&cpu);
 		
 		bios.init(memory);
 		bdos.init(memory);
 
 		if (!aFilename.empty() && aAddr) {
 			load(aFilename, aAddr);
-			cpu.state.Z_Z80_STATE_MEMBER_BC = 0;
+			Z80_BC(cpu) = 0;
 		}
-		
 	}
 
 /**
@@ -189,59 +193,59 @@ public:
 	
 	void run(const uint16_t aAddr=0x0100) {
 		assert(aAddr);	// > 0
-		cpu.state.Z_Z80_STATE_MEMBER_PC = aAddr;
+		Z80_PC(cpu) = aAddr;
 		while (true) {
-			if (cpu.state.Z_Z80_STATE_MEMBER_PC >= MEMORY_SIZE * 1024) {
+			if (Z80_PC(cpu) >= MEMORY_SIZE * 1024) {
 				constexpr char EXECUTING_OUT_OF_MEMORY[] = "Executing out of memory!";
 				std::cerr << ">> " << EXECUTING_OUT_OF_MEMORY << std::endl;
 				throw std::runtime_error(EXECUTING_OUT_OF_MEMORY);
 			}
 			
-			if (cpu.state.Z_Z80_STATE_MEMBER_PC == 0x0000) {	// Reset
+			if (Z80_PC(cpu) == 0x0000) {	// Reset
 #ifdef LOG
-				logSpecAddr(cpu.state);
+				logSpecAddr();
 #endif
 				return;
 			} 
 			
-			if (cpu.state.Z_Z80_STATE_MEMBER_PC == 0x0003) {	// Warm boot
+			if (Z80_PC(cpu) == 0x0003) {	// Warm boot
 #ifdef LOG
-				logSpecAddr(cpu.state);
+				logSpecAddr();
 #endif
 				return;
 			} 
 			
-			if (cpu.state.Z_Z80_STATE_MEMBER_PC == 0x0005) {	// BDOS
+			if (Z80_PC(cpu) == 0x0005) {	// BDOS
 #ifdef LOG
-				logSpecAddr(cpu.state);
+				logSpecAddr();
 #endif
-				bdos.function(cpu.state, memory);
+				bdos.function(cpu, memory);
 			// Return
-				cpu.state.Z_Z80_STATE_MEMBER_PC = memory[cpu.state.Z_Z80_STATE_MEMBER_SP++];
-				cpu.state.Z_Z80_STATE_MEMBER_PC += memory[cpu.state.Z_Z80_STATE_MEMBER_SP++] * 256U;
+				Z80_PC(cpu) = memory[Z80_SP(cpu)++];
+				Z80_PC(cpu) += memory[Z80_SP(cpu)++] * 256U;
 				continue;
 			}
 
-			if (cpu.state.Z_Z80_STATE_MEMBER_PC >= BIOS_ADDR) {	// BIOS
+			if (Z80_PC(cpu) >= BIOS_ADDR) {	// BIOS
 #ifdef LOG
-				logSpecAddr(cpu.state);
+				logSpecAddr();
 #endif
-				bios.function(cpu.state, memory);
+				bios.function(cpu, memory);
 			// Return
-				cpu.state.Z_Z80_STATE_MEMBER_PC = memory[cpu.state.Z_Z80_STATE_MEMBER_SP++];
-				cpu.state.Z_Z80_STATE_MEMBER_PC += memory[cpu.state.Z_Z80_STATE_MEMBER_SP++] * 256U;
+				Z80_PC(cpu) = memory[Z80_SP(cpu)++];
+				Z80_PC(cpu) += memory[Z80_SP(cpu)++] * 256U;
 				continue;
 			}
 
 #ifdef LOG
-			logSpecAddr(cpu.state);
-			logInst(cpu.state);
+			logSpecAddr();
+			logInst();
 #endif
-			if (memory[cpu.state.Z_Z80_STATE_MEMBER_PC] == 0x76)  {		// HALT
+			if (memory[Z80_PC(cpu)] == 0x76)  {		// HALT
 				constexpr char HALT_INSTRUCTION[] = "HALT instruction";
 				std::cerr << ">> "<< HALT_INSTRUCTION << " at "
 						  << std::hex << std::setw(4) 
-						  << cpu.state.Z_Z80_STATE_MEMBER_PC << "!" << std::endl;
+						  << Z80_PC(cpu) << "!" << std::endl;
 				throw std::runtime_error(HALT_INSTRUCTION);
 			}
 			z80_run(&cpu, 1);	// return cycles
@@ -258,16 +262,16 @@ protected:
 /**
  * Reset computer set all low-memory values & lauche warm boot
  */
-	void reset(ZZ80State& state) {
-		warmBoot(state);
+	void reset() {
+		warmBoot();
 	}
 	
 /**
  * Lauch & run CP/M CCP
  */
-	void warmBoot(ZZ80State& state) {
+	void warmBoot() {
 //		load(CCP_FILENAME, 0x3400 + Computer::BIAS);
-		state.Z_Z80_STATE_MEMBER_PC = 0x3400 + Computer::BIAS;
+		Z80_PC(cpu) = 0x3400 + Computer::BIAS;
 	}
 	
 /**
@@ -276,9 +280,8 @@ protected:
  * @param address Memory address to be read.
  * @return read value. 
  */	
-	static zuint8 read(void* context, zuint16 address) {
-		const auto c = static_cast<Computer *const>(context);
-		return c->memory[address];
+	static zuint8 read(Computer* computer, zuint16 address) {
+		return computer->memory[address];
 	}
 
 /**
@@ -287,9 +290,8 @@ protected:
  * @param address Memory address to be write.
  * @param value Value to be write in memory.
  */	
-	static void write(void* context, zuint16 address, zuint8 value) {
-		auto c = static_cast<Computer *const>(context);
-		c->memory[address] = value;
+	static void write(Computer* computer, zuint16 address, zuint8 value) {
+		computer->memory[address] = value;
 	}
 
 /**
@@ -326,12 +328,12 @@ protected:
  * Add a comment for special addr found in CCP source code.
  * @param CPU state.
  */
-	void logSpecAddr(const ZZ80State& state) const {
-		const uint16_t addr = state.Z_Z80_STATE_MEMBER_PC;
+	void logSpecAddr() const {
+		const uint16_t addr = Z80_PC(cpu);
 		switch (addr) {
 			case 0x0000 : std::clog << std::hex << std::setw(4) << std::setfill('0') << addr << " ; R E S E T   !" << std::endl; break;
 			case 0x0003 : std::clog << std::hex << std::setw(4) << std::setfill('0') << addr << " ; W A R M   B O O T  !" << std::endl; break;
-			case 0x0005 : std::clog << std::hex << std::setw(4) << std::setfill('0') << addr << " ; BDOS function #" << std::dec << int(state.Z_Z80_STATE_MEMBER_C) << " - "; break;
+			case 0x0005 : std::clog << std::hex << std::setw(4) << std::setfill('0') << addr << " ; BDOS function #" << std::dec << int(Z80_C(cpu)) << " - "; break;
 			case 0x0100 : std::clog << std::hex << std::setw(4) << std::setfill('0') << addr << " ; S T A R T   T H E   P R O G R A M --------------------------------------" << std::endl; break;
 
 // Pour CCP
@@ -383,8 +385,8 @@ protected:
 		}
 	}
 	
-	void logInst(const ZZ80State& state) const {
-		const uint16_t PC = state.Z_Z80_STATE_MEMBER_PC;
+	void logInst() const {
+		const uint16_t PC = Z80_PC(cpu);
 		const uint8_t inst = memory[PC];
 		
 		switch (inst) {
@@ -556,7 +558,7 @@ protected:
 				logAddrInst(PC, inst, memory[PC+1], memory[PC+2]);
 				std::clog << "LD (" << std::hex << std::setw(4)
 						  << std::setfill('0') << addr << "h),HL" << std::endl;
-				logState(state);
+				logState();
 				break;
 			}
 
@@ -872,7 +874,7 @@ protected:
 			}
 
 			case 0xDD: { // IX instructions 
-				logInstDD(state);
+				logInstDD();
 				break;
 			}
 
@@ -912,7 +914,7 @@ protected:
 			}
 			
 			case 0xED: {
-				logInstED(state);
+				logInstED();
 				break;
 			}
 
@@ -946,7 +948,7 @@ protected:
 			}
 
 			case 0xFD: {
-				logInstFD(state);
+				logInstFD();
 				break;
 			}
 
@@ -973,8 +975,8 @@ protected:
 		}
 	}
 
-	void logInstDD(const ZZ80State& state) const {
-		const uint16_t PC = state.Z_Z80_STATE_MEMBER_PC;
+	void logInstDD() const {
+		const uint16_t PC = Z80_PC(cpu);
 		const uint8_t inst = memory[PC];
 		const uint8_t inst2 = memory[PC+1];
 		
@@ -1041,8 +1043,8 @@ protected:
 */	
 	}
 
-	void logInstED(const ZZ80State& state) const {
-		const uint16_t PC = state.Z_Z80_STATE_MEMBER_PC;
+	void logInstED() const {
+		const uint16_t PC = Z80_PC(cpu);
 		const uint8_t inst = memory[PC];
 		const uint8_t inst2 = memory[PC+1];
 		
@@ -1102,8 +1104,8 @@ protected:
 		}
 	}
 	
-	void logInstFD(const ZZ80State& state) const {
-		const uint16_t PC = state.Z_Z80_STATE_MEMBER_PC;
+	void logInstFD() const {
+		const uint16_t PC = Z80_PC(cpu);
 		const uint8_t inst = memory[PC];
 		const uint8_t inst2 = memory[PC+1];
 		
@@ -1145,22 +1147,22 @@ protected:
 				  << unsigned(inst4) << "\t\t";
 	}
 	
-	void logState(const ZZ80State& state) const {
+	void logState() const {
 		std::clog << "CPU state" << std::endl;
-		std::clog << "A:" << std::hex << int(state.Z_Z80_STATE_MEMBER_A) << "h\t\t";
-		std::clog << "Flags: S:" << (state.Z_Z80_STATE_MEMBER_F & 0x80) <<
-			" Z:" << bool(state.Z_Z80_STATE_MEMBER_F & 0x40) <<
-			" Y:" << bool(state.Z_Z80_STATE_MEMBER_F & 0x20) <<
-			" H:" << bool(state.Z_Z80_STATE_MEMBER_F & 0x10) <<
-			" X:" << bool(state.Z_Z80_STATE_MEMBER_F & 0x08) <<
-			" P:" << bool(state.Z_Z80_STATE_MEMBER_F & 0x04) <<
-			" N:" << bool(state.Z_Z80_STATE_MEMBER_F & 0x02) <<
-			" C:" << bool(state.Z_Z80_STATE_MEMBER_F & 0x01);
+		std::clog << "A:" << std::hex << int(Z80_A(cpu)) << "h\t\t";
+		std::clog << "Flags: S:" << (Z80_F(cpu) & 0x80) <<
+			" Z:" << bool(Z80_F(cpu) & 0x40) <<
+			" Y:" << bool(Z80_F(cpu) & 0x20) <<
+			" H:" << bool(Z80_F(cpu) & 0x10) <<
+			" X:" << bool(Z80_F(cpu) & 0x08) <<
+			" P:" << bool(Z80_F(cpu) & 0x04) <<
+			" N:" << bool(Z80_F(cpu) & 0x02) <<
+			" C:" << bool(Z80_F(cpu) & 0x01);
 		std::clog << std::endl;		
-		std::clog << "BC:" << std::hex << int(state.Z_Z80_STATE_MEMBER_BC) << "h\t\t";
-		std::clog << "DE:" << std::hex << int(state.Z_Z80_STATE_MEMBER_DE) << std::endl;
-		std::clog << "HL:" << std::hex << int(state.Z_Z80_STATE_MEMBER_HL) << "h\t\t";
-		std::clog << "SP:" << std::hex << int(state.Z_Z80_STATE_MEMBER_SP) << std::endl;
+		std::clog << "BC:" << std::hex << int(Z80_BC(cpu)) << "h\t\t";
+		std::clog << "DE:" << std::hex << int(Z80_DE(cpu)) << std::endl;
+		std::clog << "HL:" << std::hex << int(Z80_HL(cpu)) << "h\t\t";
+		std::clog << "SP:" << std::hex << int(Z80_SP(cpu)) << std::endl;
 	}
 	
 	inline

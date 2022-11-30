@@ -98,33 +98,33 @@ public:
  * C register contains the function value.
  * @see http://www.gaby.de/cpm/manuals/archive/cpm22htm/ch5.htm
  */	
-	void function(ZZ80State& state, uint8_t *const memory) {
+	void function(Z80& cpu, uint8_t *const memory) {
 		assert(memory);
-		switch (state.Z_Z80_STATE_MEMBER_C) {
-			case 0x01 : consoleInput(state); break;
-			case 0x02 : consoleOutput(state); break;
-			case 0x06 : directConsoleIO(state); break;
-			case 0x09 : printString(state, memory); break;
-			case 0x0A : readConsoleBuffer(state, memory); break;
-			case 0x0B : getConsoleStatus(state); break;
-			case 0x0C : returnVersionNumber(state); break;
-			case 0x0D : resetDiskSystem(state, memory); break;
-			case 0x0E : selectDisk(state, memory); break;
-			case 0x0F : openFile(state, memory); break;
-			case 0x10 : closeFile(state, memory); break;
-			case 0x11 : searchForFirst(state, memory); break;
-			case 0x12 : searchForNext(state, memory); break;
-			case 0x13 : deleteFile(state, memory); break;
-			case 0x14 : readSequential(state, memory); break;
-			case 0x15 : writeSequential(state, memory); break;
-			case 0x16 : makeFile(state, memory); break;
-			case 0x18 : returnLogicVector(state); break;
-			case 0x19 : returnCurrentDisk(state, memory); break;
-			case 0x1A : setDMAAddress(state); break;
-			case 0x1D : getROVector(state); break;
-			case 0x20 : setGetUserCode(state, memory); break;
+		switch (Z80_C(cpu)) {
+			case 0x01 : consoleInput(cpu); break;
+			case 0x02 : consoleOutput(cpu); break;
+			case 0x06 : directConsoleIO(cpu); break;
+			case 0x09 : printString(cpu, memory); break;
+			case 0x0A : readConsoleBuffer(cpu, memory); break;
+			case 0x0B : getConsoleStatus(cpu); break;
+			case 0x0C : returnVersionNumber(cpu); break;
+			case 0x0D : resetDiskSystem(cpu, memory); break;
+			case 0x0E : selectDisk(cpu, memory); break;
+			case 0x0F : openFile(cpu, memory); break;
+			case 0x10 : closeFile(cpu, memory); break;
+			case 0x11 : searchForFirst(cpu, memory); break;
+			case 0x12 : searchForNext(cpu, memory); break;
+			case 0x13 : deleteFile(cpu, memory); break;
+			case 0x14 : readSequential(cpu, memory); break;
+			case 0x15 : writeSequential(cpu, memory); break;
+			case 0x16 : makeFile(cpu, memory); break;
+			case 0x18 : returnLogicVector(cpu); break;
+			case 0x19 : returnCurrentDisk(cpu, memory); break;
+			case 0x1A : setDMAAddress(cpu); break;
+			case 0x1D : getROVector(cpu); break;
+			case 0x20 : setGetUserCode(cpu, memory); break;
 			default:
-				std::cerr << "Register C: " << std::hex << std::setw(2) << std::setfill('0') << unsigned(state.Z_Z80_STATE_MEMBER_C) << "h";
+				std::cerr << "Register C: " << std::hex << std::setw(2) << std::setfill('0') << unsigned(Z80_C(cpu)) << "h";
 				std::cerr << ": Unknown BDOS function!" << std::endl;
 				throw std::runtime_error("Un-emulated BDOS function");
 				break;
@@ -147,9 +147,9 @@ protected:
  * Entered with C=1. Returns A=L=character.
  * Wait for a character from the keyboard; then echo it to the screen and return it.
  */
-	void consoleInput(ZZ80State& state) {
+	void consoleInput(Z80& cpu) {
 		const auto c = std::cin.get();
-		returnCode(state, c);
+		returnCode(cpu, c);
 	}
 
 /**
@@ -158,21 +158,21 @@ protected:
  * Entered with C=2, E=ASCII character.
  * Send the character in E to the screen. Tabs are expanded to spaces. Output can be paused with ^S and restarted with ^Q (or any key under versions prior to CP/M 3). While the output is paused, the program can be terminated with ^C.
  */
-	void consoleOutput(ZZ80State& state) {
+	void consoleOutput(Z80& cpu) {
  #ifdef LOG
-		std::clog << "Write console ASCII " << unsigned(state.Z_Z80_STATE_MEMBER_E) << " (";
-		switch(state.Z_Z80_STATE_MEMBER_E) {
+		std::clog << "Write console ASCII " << unsigned(Z80_E(cpu)) << " (";
+		switch(Z80_E(cpu)) {
 			case 0x00 : std::clog << "NUL"; break;
 			case 0x0a : std::clog << "LF"; break;
 			case 0x0d : std::clog << "CR"; break;
 			default:
-				std::clog << char(state.Z_Z80_STATE_MEMBER_E);
+				std::clog << char(Z80_E(cpu));
 				break;
 		}
 		std::clog << ")" <<  std::endl;
 #endif
-		if (state.Z_Z80_STATE_MEMBER_E) std::cout << state.Z_Z80_STATE_MEMBER_E;
-		returnCode(state, 0);
+		if (Z80_E(cpu)) std::cout << Z80_E(cpu);
+		returnCode(cpu, 0);
 	}		
 	
 /**
@@ -213,14 +213,14 @@ protected:
  *		[DOS+] One-character lookahead - return the next character waiting but leave it in the buffer.
  * Values of E not supported on a particular system will output the character. Under CP/M 2 and lower, direct console functions may interact undesirably with non-direct ones, since certain buffers may be bypassed. Do not mix them.
  */
-	void directConsoleIO(ZZ80State& state) {
-		if (state.Z_Z80_STATE_MEMBER_E == 0xFF) {
+	void directConsoleIO(Z80& cpu) {
+		if (Z80_E(cpu) == 0xFF) {
 			char c;
 			const auto n = std::cin.readsome(&c, 1);
-			returnCode(state, n ? c : 0x00);
+			returnCode(cpu, n ? c : 0x00);
 		} else {
-			std::cout << char(state.Z_Z80_STATE_MEMBER_E);
-			returnCode(state, 0x00);	// ok
+			std::cout << char(Z80_E(cpu));
+			returnCode(cpu, 0x00);	// ok
 		}
 	}
 	
@@ -247,16 +247,16 @@ protected:
  * Display a string of ASCII characters, terminated with the $ character. Thus the string may not contain $ characters - so, for example, the VT52 cursor positioning command ESC Y y+32 x+32 will not be able to use row 4.
  * Under CP/M 3 and above, the terminating character can be changed using BDOS function 110.
  */
-	void printString(ZZ80State& state, const uint8_t memory[]) const {
+	void printString(Z80& cpu, const uint8_t memory[]) const {
 		assert(memory);
 #if LOG
-		std::clog << "Output string (Buffer " << std::hex << state.Z_Z80_STATE_MEMBER_DE << "h)" << std::endl;
+		std::clog << "Output string (Buffer " << std::hex << Z80_DE(cpu) << "h)" << std::endl;
 #endif
-		const auto* c = memory + state.Z_Z80_STATE_MEMBER_DE;
+		const auto* c = memory + Z80_DE(cpu);
 		while (*c != '$') {
 			std::cout << char(*(c++));
 		}
-		returnCode(state, 0);
+		returnCode(cpu, 0);
 	}
 	
 /**
@@ -273,21 +273,21 @@ protected:
  * If DE=0 (in 16-bit versions, DX=0FFFFh) the next byte contains the number of bytes already in the buffer; otherwise this is ignored. On return from the function, it contains the number of bytes present in the buffer.
  * The bytes typed then follow. There is no end marker.
  */
-	void readConsoleBuffer(ZZ80State& state, uint8_t memory[]) {
+	void readConsoleBuffer(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
 #if LOG
-		std::clog << "Buffered console input (Buffer " << std::hex << state.Z_Z80_STATE_MEMBER_DE << "h)" << std::endl;
+		std::clog << "Buffered console input (Buffer " << std::hex << Z80_DE(cpu) << "h)" << std::endl;
 //			std::clog << "mx" << unsigned(memory[DE+0]) << std::endl;
 //			std::clog << "nc" << unsigned(memory[DE+1]) << std::endl;
 #endif			
 		std::string line;
 		std::getline(std::cin, line);
-		line = line.substr(0, memory[state.Z_Z80_STATE_MEMBER_DE]);
+		line = line.substr(0, memory[Z80_DE(cpu)]);
 
-		memory[state.Z_Z80_STATE_MEMBER_DE + 1] = line.length();
-		auto* s = memory + state.Z_Z80_STATE_MEMBER_DE + 2;
+		memory[Z80_DE(cpu) + 1] = line.length();
+		auto* s = memory + Z80_DE(cpu) + 2;
 		for (auto& i : line) *(s++) = i;
-		returnCode(state, 0);
+		returnCode(cpu, 0);
 	}
 
 /**
@@ -296,17 +296,17 @@ protected:
  * Entered with C=0Bh. Returns A=L=status
  * Returns A=0 if no characters are waiting, nonzero if a character is waiting.
  */
-	void getConsoleStatus(ZZ80State& state) {
+	void getConsoleStatus(Z80& cpu) {
 #if LOG
 		std::clog << "Console status" << std::endl;
 #endif
 		char c;
 		const auto n = std::cin.readsome(&c, 1);
 		if (!n) {
-			returnCode(state, 0x00);
+			returnCode(cpu, 0x00);
 		} else {
 			std::cin.putback(c);
-			returnCode(state, 0xFF);
+			returnCode(cpu, 0xFF);
 		}
 	}
 	
@@ -331,11 +331,11 @@ protected:
  * Confusingly, CP/M-86 v1.1 returns 0022h (ie, "8080 CP/M v2.2").
  * It is interesting to note that the version numbers returned by DRDOS and Novell DOS follow this system; DRDOS 3, 5 and 6 are version 6.x, Novell DOS 7 is version 7.2 and DR-OpenDOS is version 7.3. However these systems rather unsportingly fail to provide an INT 0E0h call to get the version number; you have to use INT 21h with AX=4452h.
  */
-	void returnVersionNumber(ZZ80State& state) {
+	void returnVersionNumber(Z80& cpu) {
 #if LOG
 		std::clog << "Version number CP/M 2.2" << std::endl;
 #endif
-		returnCode(state, 0x0022);	// hard coded CPM 2.2
+		returnCode(cpu, 0x0022);	// hard coded CPM 2.2
 	}
 	
 /**
@@ -346,14 +346,14 @@ protected:
  * In versions 1 and 2, logs in drive A: and returns 0FFh if there is a file present whose name begins with a $, otherwise 0. Replacement BDOSses may modify this behaviour.
  * In multitasking versions, returns 0 if succeeded, or 0FFh if other processes have files open on removable or read-only drives. 
  */
-	void resetDiskSystem(ZZ80State& state, uint8_t memory[]) {
+	void resetDiskSystem(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
 #if LOG
 		std::clog << "Reset drive ; default to A" << std::endl;
 #endif
 		memory[USER_DRIVE] = 0x00;	// USER: 0, DRIVE: 0 (A)
 		dma = 0x80;
-		returnCode(state, 0);
+		returnCode(cpu, 0);
 	}
 		
 /**
@@ -363,26 +363,26 @@ protected:
  * The drive number passed to this routine is 0 for A:, 1 for B: up to 15 for P:.
  * Sets the currently selected drive to the drive in A; logs in the disc. Returns 0 if successful or 0FFh if error. Under MP/M II and later versions, H can contain a physical error number. 
  */
- 	void selectDisk(ZZ80State& state, uint8_t memory[]) {
+ 	void selectDisk(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
 #if LOG
-		std::clog << "Select disc to " << char('A' + state.Z_Z80_STATE_MEMBER_E) << std::endl;
+		std::clog << "Select disc to " << char('A' + Z80_E(cpu)) << std::endl;
 #endif
-		if (state.Z_Z80_STATE_MEMBER_E > 15) {
+		if (Z80_E(cpu) > 15) {
 			std::cerr << ">> Invalid disk (A-P only)!" << std::endl;
-			returnCode(state, 0xFF);
+			returnCode(cpu, 0xFF);
 			return;
 		}
 		
-		const char dir[] = { char('A' + state.Z_Z80_STATE_MEMBER_E), '\0' };
+		const char dir[] = { char('A' + Z80_E(cpu)), '\0' };
 		const std::filesystem::path path(dir);
 		if (std::filesystem::exists(path)) {
-			memory[USER_DRIVE] = (memory[USER_DRIVE] & 0xF0) | (state.Z_Z80_STATE_MEMBER_E & 0x0F);
-			returnCode(state, 0x00);
+			memory[USER_DRIVE] = (memory[USER_DRIVE] & 0xF0) | (Z80_E(cpu) & 0x0F);
+			returnCode(cpu, 0x00);
 			return;
 		}
-		std::cerr << ">> Path '" << char('A' + state.Z_Z80_STATE_MEMBER_E) << "/' do not exists!" << std::endl;
-		returnCode(state, 0xFF);
+		std::cerr << ">> Path '" << char('A' + Z80_E(cpu)) << "/' do not exists!" << std::endl;
+		returnCode(cpu, 0xFF);
 	}
 	
 /**
@@ -401,30 +401,30 @@ protected:
  *  * F7' is set if the file is read-only because writing is password protected and no password was supplied;
  *  * F8' is set if the file is read-only because it is a User 0 system file opened from another user area.
  */
-	void openFile(ZZ80State& state, const uint8_t memory[]) {
+	void openFile(Z80& cpu, const uint8_t memory[]) {
 		assert(memory);
-		const FCB_t *const pFCB = reinterpret_cast<const FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
+		const FCB_t *const pFCB = reinterpret_cast<const FCB_t *const>(memory + Z80_DE(cpu));
 		char filename[15];	// DIR + "/" + NAME + "." + EXT
 		fcbToFilename(pFCB, (memory[USER_DRIVE] & 0x0F), filename);
 
 #if LOG
 		std::clog << "Open file " << '"' << filename << "\" (FCB: "
-				  << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h) "
+				  << std::hex << unsigned(Z80_DE(cpu)) << "h) "
 				  << std::endl;
 #endif
 
-		std::fstream& s = getStream(state.Z_Z80_STATE_MEMBER_DE);
+		std::fstream& s = getStream(Z80_DE(cpu));
 		s.close();	// in case of...
 		s.open(filename, std::ios::binary|std::ios::in);	// Open RO !
 		if (!s) {
 			std::cerr << ">> Error opening file '" << filename << "': "
 					  << strerror(errno) << "!" << std::endl;
-			returnCode(state, 0xFF);
-			releaseStream(state.Z_Z80_STATE_MEMBER_DE);
+			returnCode(cpu, 0xFF);
+			releaseStream(Z80_DE(cpu));
 			return;
 		}
 //		memcpy(pFCB->AL, &ps, sizeof(ps));
-		returnCode(state, 0x00);
+		returnCode(cpu, 0x00);
 	}
 
 /**
@@ -436,24 +436,24 @@ protected:
  * Under CP/M 3, if F5' is set to 1 then the pending data are written and the file is made consistent, but it remains open.
  * If A=0FFh, CP/M 3 returns a hardware error in H and B.
  */
- 	void closeFile(ZZ80State& state, uint8_t memory[]) {
+ 	void closeFile(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
 //		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
 #if LOG
-		std::clog << "Close file (FCB: " << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h)" << std::endl;
+		std::clog << "Close file (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
 #endif
 /*
 		std::fstream* ps;
 		memcpy(&ps, pFCB->AL, sizeof(ps));
 */
-		std::fstream& s = getStream(state.Z_Z80_STATE_MEMBER_DE);
+		std::fstream& s = getStream(Z80_DE(cpu));
 		s.close();
 		if (s.is_open()) {
 			std::cerr << ">> Error closing file: " << strerror(errno) << "!" << std::endl;
-			returnCode(state, 0xFF);	// KO
+			returnCode(cpu, 0xFF);	// KO
 		} else {
-			releaseStream(state.Z_Z80_STATE_MEMBER_DE);
-			returnCode(state, 0x00);	// OK
+			releaseStream(Z80_DE(cpu));
+			returnCode(cpu, 0x00);	// OK
 		}
 	}
 /**
@@ -464,11 +464,11 @@ protected:
  * Returns A=0FFh if error (CP/M 3 returns a hardware error in H and B), or A=0-3 if successful. The value returned can be used to calculate the address of a memory image of the directory entry; it is to be found at DMA+A*32.
  * Under CP/M-86 v4, if the first byte of the FCB is '?' or bit 7 of the byte is set, subdirectories as well as files will be returned by this search.
  */
-	void searchForFirst(ZZ80State& state, uint8_t memory[]) {
+	void searchForFirst(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
-		const FCB_t *const pFCB = reinterpret_cast<const FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
+		const FCB_t *const pFCB = reinterpret_cast<const FCB_t *const>(memory + Z80_DE(cpu));
 #if LOG
-		std::clog << "Search for first (FCB: " << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h)" << std::endl;
+		std::clog << "Search for first (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
 #endif
 		const char dir[] = { char('A' + (pFCB->DR ? pFCB->DR-1 : (memory[USER_DRIVE] & 0x0F))), '/', '\0' };
 
@@ -480,7 +480,7 @@ protected:
 		di = std::filesystem::directory_iterator(path, ec);		// New directory_iterator
 		if (ec) {
 			std::cerr << ">> Error looking for path '" << path.string() << "': " << ec.message() << "!" << std::endl;
-			returnCode(state, 0xFF);	// KO
+			returnCode(cpu, 0xFF);	// KO
 			return;
 		}
 
@@ -489,9 +489,9 @@ protected:
 			++di;	// go to next
 			memory[dma] = pFCB->DR;
 			memcpy(memory + dma + 1, filename, 11);
-			returnCode(state, 0x00);	// OK
+			returnCode(cpu, 0x00);	// OK
 		} else {	// cant find any
-			returnCode(state, 0xFF);	// KO
+			returnCode(cpu, 0xFF);	// KO
 		}
 		return;
 	}
@@ -504,11 +504,11 @@ protected:
  * Function 18 behaves exactly as number 17, but finds the next occurrence of the specified file after the one returned last time. The FCB parameter is not documented, but Jim Lopushinsky states in LD301.DOC:
  * In none of the official Programmer's Guides for any version of CP/M does it say that an FCB is required for Search Next (function 18). However, if the FCB passed to Search First contains an unambiguous file reference (i.e. no question marks), then the Search Next function requires an FCB passed in reg DE (for CP/M-80) or DX (for CP/M-86).
  */
-	void searchForNext(ZZ80State& state, uint8_t memory[]) {
+	void searchForNext(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
-		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
+		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
 #if LOG
-		std::clog << "Search for next (FCB: " << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h)" << std::endl;
+		std::clog << "Search for next (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
 #endif
 
 		char filename[12];
@@ -516,19 +516,19 @@ protected:
 			++di;
 			memory[dma] = pFCB->DR;
 			memcpy(memory + dma + 1, filename, 11);
-			returnCode(state, 0x00);	// OK
+			returnCode(cpu, 0x00);	// OK
 		} else {
-			returnCode(state, 0xFF);	// KO
+			returnCode(cpu, 0xFF);	// KO
 		}
 	}
 
 /**
  * BDOS function 19
  */
- 	void deleteFile(ZZ80State& state, uint8_t *const memory) {
-		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
+ 	void deleteFile(Z80& cpu, uint8_t *const memory) {
+		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
 #if LOG
-		std::clog << "Delete file (FCB: " << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h)" << std::endl;
+		std::clog << "Delete file (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
 #endif
 		const char dir[] = { char('A' + (pFCB->DR ? pFCB->DR-1 : (memory[USER_DRIVE]) & 0x0F)), '/', '\0' };
 
@@ -541,7 +541,7 @@ protected:
 		std::filesystem::directory_iterator di(path, ec);		// New directory_iterator
 		if (ec) {
 			std::cerr << ">> Error looking for path '" << path.string() << "': " << ec.message() << "!" << std::endl;
-			returnCode(state, 0xFF);	// KO
+			returnCode(cpu, 0xFF);	// KO
 			return;
 		}		
 
@@ -551,14 +551,14 @@ protected:
 			std::filesystem::remove(di->path(), ec);
 			if (ec) {
 				std::cerr << ">> Error removing '" << di->path().string() << "': " << ec.message() << "!" << std::endl;
-				returnCode(state, 0xFF);	// KO
+				returnCode(cpu, 0xFF);	// KO
 				return;
 			} else {
 				++nb;
 				++di;
 			}
 		}
-		returnCode(state, nb ? 0x00 : 0xFF);	// one or more file removed
+		returnCode(cpu, nb ? 0x00 : 0xFF);	// one or more file removed
 	}
 
 /**
@@ -574,28 +574,28 @@ protected:
  *  0FFh hardware error.
  * If on return A is not 0FFh, H contains the number of 128-byte records read before the error (MP/M II and later).
  */
- 	void readSequential(ZZ80State& state, uint8_t memory[]) {
+ 	void readSequential(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
-//		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
+//		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
 #if LOG
-		std::clog << "Read next record (FCB: " << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h)" << std::endl;
+		std::clog << "Read next record (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
 #endif
 		if (dma + SECTOR_SIZE >= MEMORY_SIZE * 1024) {
 			std::cerr << ">> Writing DMA out of memory!" << std::endl;
-			returnCode(state, 0xFF);	// OK
+			returnCode(cpu, 0xFF);	// OK
 			return;
 		}
-		std::fstream& s = getStream(state.Z_Z80_STATE_MEMBER_DE);
+		std::fstream& s = getStream(Z80_DE(cpu));
 		s.read(reinterpret_cast<char*>(memory + dma), SECTOR_SIZE);
 		if (s) {
-			returnCode(state, 0x00);	// OK
+			returnCode(cpu, 0x00);	// OK
 		} else {
 			if (s.eof()) {
 				if (s.gcount()) {		// few read
 					memset(memory + s.gcount(), 0xE5, SECTOR_SIZE - s.gcount());	// padding with 0xE5
-					returnCode(state, 0x00);	// OK - May be partial read
+					returnCode(cpu, 0x00);	// OK - May be partial read
 				} else {
-					returnCode(state, 0x01);	// EOF - Nothing read
+					returnCode(cpu, 0x01);	// EOF - Nothing read
 				} 
 			} else {
 				std::cerr << ">> Error reading: " << strerror(errno) << "!" << std::endl;
@@ -605,7 +605,7 @@ protected:
 				std::cerr << ">> fail: " << s.fail() << std::endl;
 				std::cerr << ">> bad: " << s.bad() << std::endl;
 				std::cerr << ">> eof: " << s.eof() << std::endl;
-				returnCode(state, 0xFF);	// OK
+				returnCode(cpu, 0xFF);	// OK
 			}
 		}
 	}
@@ -613,18 +613,18 @@ protected:
 /**
  * BDOS function 21
  */
-	void writeSequential(ZZ80State& state, uint8_t memory[]) {
+	void writeSequential(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
-//		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
+//		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
 #if LOG
-		std::clog << "Write next record (FCB: " << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h)" << std::endl;
+		std::clog << "Write next record (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
 #endif
 		if (dma + SECTOR_SIZE >= MEMORY_SIZE * 1024) {
 			std::cerr << ">> Reading DMA out of memory!" << std::endl;
-			returnCode(state, 0xFF);	// KO
+			returnCode(cpu, 0xFF);	// KO
 			return;
 		}
-		std::fstream& s = getStream(state.Z_Z80_STATE_MEMBER_DE);
+		std::fstream& s = getStream(Z80_DE(cpu));
 		s.write(reinterpret_cast<char*>(memory + dma), SECTOR_SIZE);
 		if (!s) {
 			std::cerr << ">> Error writing: " << strerror(errno) << "!" << std::endl;
@@ -632,10 +632,10 @@ protected:
 			std::cerr << ">> fail: " << s.fail() << std::endl;
 			std::cerr << ">> bad: " << s.bad() << std::endl;
 			std::cerr << ">> eof: " << s.eof() << std::endl;
-			returnCode(state, 0xFF);	// KO
+			returnCode(cpu, 0xFF);	// KO
 			return;
 		}
-		returnCode(state, 0x00);	// OK
+		returnCode(cpu, 0x00);	// OK
 	}
 	
 /**
@@ -649,11 +649,11 @@ protected:
  *  DEFS    8   ; Password
  *  DEFB    1   ; Password mode
  */ 
-	void makeFile(ZZ80State& state, uint8_t memory[]) {
+	void makeFile(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
-		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + state.Z_Z80_STATE_MEMBER_DE);
+		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
 #if LOG
-		std::clog << "Make file (FCB: " << std::hex << unsigned(state.Z_Z80_STATE_MEMBER_DE) << "h)" << std::endl;
+		std::clog << "Make file (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
 #endif
 		char filename[15];	// DIR + "/" + NAME + "." + EXT
 		fcbToFilename(pFCB, (memory[USER_DRIVE] & 0x0F), filename);
@@ -662,18 +662,18 @@ protected:
 		if (sIn.is_open()) {	// Existing file (error!)
 			sIn.close();
 			std::cerr << ">> Error creating file '" << filename << "': Already existing file!" << std::endl;
-			returnCode(state, 0xFF);
+			returnCode(cpu, 0xFF);
 		} else {			// New file (find.)
-			std::fstream& sOut = getStream(state.Z_Z80_STATE_MEMBER_DE);
+			std::fstream& sOut = getStream(Z80_DE(cpu));
 			sOut.close();	// in case of...
 			sOut.open(filename, std::ios::binary|std::ios::out|std::ios::in|std::ios::trunc);	// create if not exists
 			if (!sOut) {	// fail to open!
 				std::cerr << ">> Error opening file '" << filename << "': " << strerror(errno) << "!" << std::endl;
-				returnCode(state, 0xFF);
-				releaseStream(state.Z_Z80_STATE_MEMBER_DE);
+				returnCode(cpu, 0xFF);
+				releaseStream(Z80_DE(cpu));
 			} else {	// Success opening.
 //				memcpy(pFCB->AL, &ps, sizeof(ps));
-				returnCode(state, 0x00);
+				returnCode(cpu, 0x00);
 			}
 		}
 	}
@@ -685,7 +685,7 @@ protected:
  * Renames the file specified to the new name, stored at FCB+16. This function cannot rename across drives so the "drive" bytes of both filenames should be identical. Returns A=0-3 if successful; A=0FFh if error. Under CP/M 3, if H is zero then the file could not be found; if it is nonzero it contains a hardware error number.
  * Under Concurrent CP/M, set F5' if an extended lock on the file should be held through the rename. Otherwise the lock will be released.
  */ 
- 	void renameFile(ZZ80State& state, uint8_t memory[]);
+ 	void renameFile(Z80& cpu, uint8_t memory[]);
  	
 /**
  * BDOS function 24 (DRV_LOGINVEC) - Return bitmap of logged-in drives
@@ -695,7 +695,7 @@ protected:
  * In DOSPLUS v2.1, the three top bits (for the floating drives) will mirror the status of the corresponding host drives). This does not happen in earlier DOSPLUS / Personal CP/M-86 systems.
  */ 
  
- 	void returnLogicVector(ZZ80State& state) {
+ 	void returnLogicVector(Z80& cpu) {
 #if LOG
 		std::clog << "Return Logic Vector (actives disks)" << std::endl;
 #endif
@@ -706,7 +706,7 @@ protected:
 			const auto status = std::filesystem::status(path);
 			if (exists(status) && is_directory(status)) actives |= (1 << d);
 		}		
-		returnCode(state, actives);
+		returnCode(cpu, actives);
 	}
 
 /**
@@ -714,12 +714,12 @@ protected:
  * Supported by: All versions
  * Entered with C=19h. Returns drive in A. Returns currently selected drive. 0 => A:, 1 => B: etc.
  */
- 	void returnCurrentDisk(ZZ80State& state, const uint8_t memory[]) {
+ 	void returnCurrentDisk(Z80& cpu, const uint8_t memory[]) {
 		assert(memory);
 #if LOG
 		std::clog << "Get drive (" << char('A' + (memory[USER_DRIVE] & 0x0F)) << ')' << std::endl;
 #endif
-		returnCode(state, (memory[USER_DRIVE] & 0x0F));	// ok - drive numb.
+		returnCode(cpu, (memory[USER_DRIVE] & 0x0F));	// ok - drive numb.
 	}
 
 /**
@@ -728,12 +728,12 @@ protected:
  * Entered with C=1Ah, DE=address.
  * Set the Direct Memory Access address; a pointer to where CP/M should read or write data. Initially used for the transfer of 128-byte records between memory and disc, but over the years has gained many more functions.
  */
- 	void setDMAAddress(ZZ80State& state) {
+ 	void setDMAAddress(Z80& cpu) {
 #if LOG
-		std::clog << "Set DMA address  (" << std::hex << state.Z_Z80_STATE_MEMBER_DE << ')' << std::endl;
+		std::clog << "Set DMA address  (" << std::hex << Z80_DE(cpu) << ')' << std::endl;
 #endif
-		dma = state.Z_Z80_STATE_MEMBER_DE;
-		returnCode(state, 0);	// OK
+		dma = Z80_DE(cpu);
+		returnCode(cpu, 0);	// OK
 	}
 		
 /**
@@ -744,7 +744,7 @@ protected:
  * Under previous versions, the format of the bitmap is a sequence of bytes, with bit 7 of the byte representing the lowest-numbered block on disc, and counting starting at block 0 (the directory). A bit is set if the corresponding block is in use.
  * Under CP/M 3, the allocation vector may be of this form (single-bit) or allocate two bits to each block (double-bit). This information is stored in the SCB.
  */
-	void getAddrAlloc(ZZ80State& state, uint8_t *const memory);
+	void getAddrAlloc(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 28 (DRV_SETRO) - Software write-protect current disc
@@ -753,7 +753,7 @@ protected:
  * Temporarily set current drive to be read-only; attempts to write to it will fail. Under genuine CP/M systems, this continues until either call 13 (disc reset) or call 37 (selective disc reset) is called; in practice, this means that whenever a program returns to the command prompt, all drives are reset to read/write. Newer BDOS replacements only reset the drive when function 37 is called.
  * Under multitasking CP/Ms, this can fail (returning A=0FFh) if another process has a file open on the drive.
  */
-	void writeProtectDisk(ZZ80State& state, uint8_t *const memory);
+	void writeProtectDisk(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 29 (DRV_ROVEC) - Return bitmap of read-only drives
@@ -761,7 +761,7 @@ protected:
  * Entered with C=1Dh. Returns bitmap in HL.
  * Bit 7 of H corresponds to P: while bit 0 of L corresponds to A:. A bit is set if the corresponding drive is set to read-only in software.
  */
-	void getROVector(ZZ80State& state) {
+	void getROVector(Z80& cpu) {
 #if LOG
 		std::clog << "Return RO Vector (read-only disks)" << std::endl;
 #endif
@@ -776,7 +776,7 @@ protected:
 /* TODO (#1#): Terminer cette fonction avec la 
                détection du readonly */
 		}
-		returnCode(state, ro);
+		returnCode(cpu, ro);
 	}
 
 /**
@@ -788,7 +788,7 @@ protected:
  * Under CP/M 3, the Last Record Byte Count is set by storing the required value at FCB+32 (FCB+20h) and setting the F6' bit.
  * The code returned in A is 0-3 if the operation was successful, or 0FFh if there was an error. Under CP/M 3, if A is 0FFh and H is nonzero, H contains a hardware error.
  */
-	void setFileAttributes(ZZ80State& state, uint8_t *const memory);
+	void setFileAttributes(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 31 (DRV_DPB) - get DPB address
@@ -796,7 +796,7 @@ protected:
  * Entered with C=1Fh. Returns address in HL.
  * Returns the address of the Disc Parameter Block for the current drive. See the formats listing for details of the DPBs under various CP/M versions.
  */
-	void getAddrDiskParms(ZZ80State& state, uint8_t *const memory);
+	void getAddrDiskParms(Z80& cpu, uint8_t *const memory);
 	
 /**
  * BDOS function 32 (F_USERNUM) - get/set user number
@@ -805,51 +805,51 @@ protected:
  * Set current user number. E should be 0-15, or 255 to retrieve the current user number into A. Some versions can use user areas 16-31, but these should be avoided for compatibility reasons.
  * DOS+ returns the number set in A.
  */
-	void setGetUserCode(ZZ80State& state, uint8_t memory[]) {
+	void setGetUserCode(Z80& cpu, uint8_t memory[]) {
 		assert(memory);
-		if (state.Z_Z80_STATE_MEMBER_E == 0xFF) {
+		if (Z80_E(cpu) == 0xFF) {
 #if LOG
 			std::clog << "Get user number (" << unsigned(memory[USER_DRIVE] >> 4) << ")" << std::endl;
 #endif
-			returnCode(state, memory[USER_DRIVE] >> 4);	// OK - user numb.
+			returnCode(cpu, memory[USER_DRIVE] >> 4);	// OK - user numb.
 		} else {
 #if LOG
-			std::clog << "Set user number to " << unsigned(state.Z_Z80_STATE_MEMBER_E) << std::endl;
+			std::clog << "Set user number to " << unsigned(Z80_E(cpu)) << std::endl;
 #endif
-			memory[USER_DRIVE] = (memory[USER_DRIVE] & 0x0F) | state.Z_Z80_STATE_MEMBER_E << 4;
-			returnCode(state, 0);	// OK
+			memory[USER_DRIVE] = (memory[USER_DRIVE] & 0x0F) | Z80_E(cpu) << 4;
+			returnCode(cpu, 0);	// OK
 		}
 	}
 
 /**
  * BDOS function 33
  */
-	void readRandom(ZZ80State& state, uint8_t *const memory);
+	void readRandom(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 34
  */
-	void writeRandom(ZZ80State& state, uint8_t *const memory);
+	void writeRandom(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 35
  */
-	void computeFileSize(ZZ80State& state, uint8_t *const memory);
+	void computeFileSize(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 36
  */
-	void setRandomRecord(ZZ80State& state, uint8_t *const memory);
+	void setRandomRecord(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 37
  */
-	void resetDrive(ZZ80State& state, uint8_t *const memory);
+	void resetDrive(Z80& cpu, uint8_t *const memory);
 
 /**
  * BDOS function 40
  */
-	void writeRandomWithZeroFill(ZZ80State& state, uint8_t *const memory);
+	void writeRandomWithZeroFill(Z80& cpu, uint8_t *const memory);
 
 
 
@@ -894,18 +894,18 @@ protected:
 /**
  */
 	inline
-	void returnCode(ZZ80State& state, const uint16_t hl) const  {
-		state.Z_Z80_STATE_MEMBER_HL = hl;
-		state.Z_Z80_STATE_MEMBER_A = state.Z_Z80_STATE_MEMBER_L;
-		state.Z_Z80_STATE_MEMBER_B = state.Z_Z80_STATE_MEMBER_H;
+	void returnCode(Z80& cpu, const uint16_t hl) const  {
+		Z80_HL(cpu) = hl;
+		Z80_A(cpu) = Z80_L(cpu);
+		Z80_B(cpu) = Z80_H(cpu);
 	}
 
 /**
  */
 	inline
-	void returnCode(ZZ80State& state, const uint8_t a, const uint8_t b) const  {
-		state.Z_Z80_STATE_MEMBER_L = state.Z_Z80_STATE_MEMBER_A = a;
-		state.Z_Z80_STATE_MEMBER_H = state.Z_Z80_STATE_MEMBER_B = b;
+	void returnCode(Z80& cpu, const uint8_t a, const uint8_t b) const  {
+		Z80_L(cpu) = Z80_A(cpu) = a;
+		Z80_H(cpu) = Z80_B(cpu) = b;
 	}
 
 /**
