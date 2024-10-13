@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG		1
+// #define LOG		1
 
 #include "computer.h"
 
@@ -29,6 +29,8 @@
 #include <exception>
 
 int main(int argc, char** argv) {
+   setvbuf(stdin, NULL, _IONBF, 0); //turn off buffering
+   setvbuf(stdout, NULL, _IONBF, 0);
 
 #ifdef LOG
 	std::filesystem::path path(argv[0]);
@@ -36,7 +38,7 @@ int main(int argc, char** argv) {
 	auto old_rdbuf = std::clog.rdbuf();
 	std::clog.rdbuf(out.rdbuf());
 #endif
-	
+
 	try {
 		Computer<64, 0xFC00, 0xFE00> computer;
 		switch (argc) {
