@@ -110,11 +110,15 @@
  
 template <unsigned MEMORY_SIZE, uint16_t BDOS_ADDR, uint16_t BIOS_ADDR>
 class Computer {
+	const char* _prog;
+	const unsigned _addr;
 public:
 /**
  * Constructor printing out somme copyright texts.
  */
-	Computer() : 
+	Computer(const char* prog, const unsigned addr) : 
+		_prog(prog),
+		_addr(addr),
 		cpu(),
 		memory(),
 		bdos(),
@@ -156,6 +160,11 @@ public:
 			load(aFilename, aAddr);
 			Z80_BC(cpu) = 0;
 		}
+	}
+
+	void start() {
+		init(_prog, _addr);
+		run(_addr);
 	}
 
 /**
@@ -220,10 +229,15 @@ public:
 				logSpecAddr();
 #endif
 				bdos.function(cpu, memory);
-			// Return
-				Z80_PC(cpu) = memory[Z80_SP(cpu)++];
-				Z80_PC(cpu) += memory[Z80_SP(cpu)++] * 256U;
-				continue;
+				if (Z80_PC(cpu) == 0) {
+					start();
+				}
+				else {
+					// Return
+					Z80_PC(cpu) = memory[Z80_SP(cpu)++];
+					Z80_PC(cpu) += memory[Z80_SP(cpu)++] * 256U;
+					continue;
+				}
 			}
 
 			if (Z80_PC(cpu) >= BIOS_ADDR) {	// BIOS

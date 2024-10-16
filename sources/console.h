@@ -33,8 +33,25 @@ void conctrl_clear_to_end_of_screen();
 void conctrl_black_text_on_white();
 void conctrl_white_text_on_black();
 void conctrl_move_cursor(const uint8_t x, const uint8_t y);
+int conctrl_kbhit();
+int conctrl_getch();
 
 #define ESC ((char)0x1b)
+
+int conctrl_kbhit(void) {
+	int characters_buffered;
+	ioctl(STDIN_FILENO, FIONREAD, &characters_buffered);
+	return characters_buffered;
+}
+
+int conctrl_getch(void) {
+	if (!conctrl_kbhit()) return 0;
+    const int c = getchar();
+    switch(c) {
+        case 10: return 13;
+        default: return c;
+    }
+}
 
 void conctrl_save_cursor_pos() {
     std::cout << ESC << "[s";

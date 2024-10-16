@@ -39,15 +39,7 @@
 
 // #define LOG 1
 
-int kbhit(void) {
-	int characters_buffered;
-	ioctl(STDIN_FILENO, FIONREAD, &characters_buffered);
-	return characters_buffered;
-}
 
-int getch(void) {
-	return kbhit() ? getchar() : 0;
-}
 
 /**
  * CP/M File Control Block
@@ -119,6 +111,7 @@ public:
 	void function(Z80& cpu, uint8_t *const memory) {
 		assert(memory);
 		switch (Z80_C(cpu)) {
+			case 0x00 : systemReset(cpu); break;
 			case 0x01 : consoleInput(cpu); break;
 			case 0x02 : consoleOutput(cpu); break;
 			case 0x06 : directConsoleIO(cpu); break;
@@ -162,7 +155,9 @@ protected:
  * Entered with C=0. Does not return.
  * Quit the current program, return to command prompt. This call is hardly ever used in 8-bit CP/M since the RST 0 instruction does the same thing and saves four bytes.
  */
- 	void systemReset();
+ 	void systemReset(Z80& cpu) {
+		Z80_PC(cpu) = 0x0000;
+	}
 
 /**
  * BDOS function 1 (C_READ) - Console input
@@ -241,12 +236,7 @@ protected:
 
 		unsigned e = Z80_E(cpu) ;
 		if (e == 0xFF) {
-			int c = getch();
-			switch(c) {
-				case 10: c = 13; break;
-				default: break;
-			}
-			returnCode(cpu, c);
+			returnCode(cpu, conctrl_getch());
 		} else {
 			console_putc(e);
 			returnCode(cpu, 0x00);	// ok
@@ -336,12 +326,7 @@ protected:
 		std::clog << "Console status" << std::endl;
 #endif
 		char c;
-		const auto n = kbhit();
-		if (!n) {
-			returnCode(cpu, 0x00);
-		} else {
-			returnCode(cpu, 0xFF);
-		}
+		returnCode(cpu, conctrl_kbhit() ? 0xff : 0x00);
 	}
 	
 /**

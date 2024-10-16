@@ -40,24 +40,16 @@ int main(int argc, char** argv) {
 #endif
 
 	try {
-		Computer<64, 0xFC00, 0xFE00> computer;
-		switch (argc) {
-			case 1:
-				while (true) {
-					computer.init("CCP-DR.64K", 0xF400);
-//					computer.load("CPM.SYS", 0x3400 + 0xA800);
-					computer.run(0xF400);
-				}
-				break;
-			case 2:
-				computer.init(argv[1], 0x0100);
-				computer.run(0x0100);
-				break;
-			default:
-				std::cerr << "Invalid number of arguments!" << std::endl;
-				return EXIT_FAILURE;
+		if (argc > 2) {
+			std::cerr << "Invalid number of arguments!" << std::endl;
+			return EXIT_FAILURE;
 		}
-	} catch (std::exception& e) {
+		const char* prog = argc > 1 ? argv[1] : "CCP-DR.64K";
+		const unsigned addr = argc > 1 ? 0x0100 : 0xF400;
+		Computer<64, 0xFC00, 0xFE00> computer(prog, addr);
+		computer.start();
+	}
+	catch (std::exception& e) {
 		std::cerr << "Exception " << e.what() << std::endl;
 		return EXIT_FAILURE;
 	}
