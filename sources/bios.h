@@ -24,6 +24,7 @@
 // #include <iostream>
 // #include <iomanip>
 // #include <filesystem>
+#include "console.h"
 
 // #define LOG 1
 /**
@@ -50,6 +51,7 @@ template <unsigned MEMORY_SIZE, uint16_t BIOS_ADDR>
 class BIOS {
 public:
 	BIOS() {
+		// TODO send to console
 		std::cout << "CP/M 2.2 Emulator " << MEMORY_SIZE << "kb" << std::endl;
 		std::cout << "Copyright (c) 2021 by M. Sibert" << std::endl;
 		std::cout << std::endl;
@@ -75,24 +77,28 @@ public:
 	void function(Z80& cpu, uint8_t *const memory) {
 		assert(memory);
 		switch (Z80_PC(cpu)) {
-			case CONST_ADDR : {	// constf
-				char c;
-				const auto n = std::cin.readsome(&c, 1);
-				if (!n) {
-					Z80_A(cpu) = 0x00;
-				} else {
-					std::cin.putback(c);
-					Z80_A(cpu) = 0xFF;
-				}
+			case BOOT_ADDR: {
+				std::cerr << " : Unimplemented BIOS function BOOT!" << std::endl;
+				
+				throw std::runtime_error("Un-emulated BIOS function");
 				break;
 			}
-			case CONIN_ADDR : {	// coninf
-				const auto c = std::cin.get();
-				Z80_A(cpu) = (c & 0x0F);
+			case WBOOT_ADDR: {
+				std::cerr << " : Unimplemented BIOS function WBOOT!" << std::endl;
+				
+				throw std::runtime_error("Un-emulated BIOS function");
 				break;
 			}
-			case CONOUT_ADDR : {	// coninf
-				std::cout << char(Z80_C(cpu));
+			case CONST_ADDR: {
+				Z80_A(cpu) = conctrl_kbhit() ? 0xff : 0x00;
+				break;
+			}
+			case CONIN_ADDR : {
+				Z80_A(cpu) = conctrl_getch();
+				break;
+			}
+			case CONOUT_ADDR : {
+				console_putc(Z80_C(cpu));
 				break;
 			}
 				

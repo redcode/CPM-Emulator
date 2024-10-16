@@ -12,6 +12,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * 
+ * See http://www.gaby.de/cpm/manuals/archive/cpm22htm/ch5.htm
  */
 
 #pragma once
@@ -21,6 +23,12 @@
 // #include <dirent.h>
 // #include <sys/stat.h>
 #include <cstring>
+#include <termios.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/ioctl.h>
+#include "console.h"
+
 // #include <iostream>
 // #include <iomanip>
 
@@ -30,6 +38,8 @@
 #include <filesystem>
 
 // #define LOG 1
+
+
 
 /**
  * CP/M File Control Block
@@ -101,9 +111,11 @@ public:
 	void function(Z80& cpu, uint8_t *const memory) {
 		assert(memory);
 		switch (Z80_C(cpu)) {
+			case 0x00 : systemReset(cpu); break;
 			case 0x01 : consoleInput(cpu); break;
 			case 0x02 : consoleOutput(cpu); break;
 			case 0x06 : directConsoleIO(cpu); break;
+			case 0x07 : getIOByte(cpu, memory); break;
 			case 0x09 : printString(cpu, memory); break;
 			case 0x0A : readConsoleBuffer(cpu, memory); break;
 			case 0x0B : getConsoleStatus(cpu); break;
@@ -118,11 +130,15 @@ public:
 			case 0x14 : readSequential(cpu, memory); break;
 			case 0x15 : writeSequential(cpu, memory); break;
 			case 0x16 : makeFile(cpu, memory); break;
+			case 0x17 : renameFile(cpu, memory); break;
 			case 0x18 : returnLogicVector(cpu); break;
 			case 0x19 : returnCurrentDisk(cpu, memory); break;
 			case 0x1A : setDMAAddress(cpu); break;
 			case 0x1D : getROVector(cpu); break;
+			case 0x1F : break; // Get Addr (DPB)               none           HL= .DPB
 			case 0x20 : setGetUserCode(cpu, memory); break;
+			case 0x21 : readRandom(cpu, memory); break;
+			case 0x24 : setRandomRecord(cpu, memory); break;
 			default:
 				std::cerr << "Register C: " << std::hex << std::setw(2) << std::setfill('0') << unsigned(Z80_C(cpu)) << "h";
 				std::cerr << ": Unknown BDOS function!" << std::endl;
@@ -139,7 +155,9 @@ protected:
  * Entered with C=0. Does not return.
  * Quit the current program, return to command prompt. This call is hardly ever used in 8-bit CP/M since the RST 0 instruction does the same thing and saves four bytes.
  */
- 	void systemReset();
+ 	void systemReset(Z80& cpu) {
+		Z80_PC(cpu) = 0x0000;
+	}
 
 /**
  * BDOS function 1 (C_READ) - Console input
@@ -171,7 +189,8 @@ protected:
 		}
 		std::clog << ")" <<  std::endl;
 #endif
-		if (Z80_E(cpu)) std::cout << Z80_E(cpu);
+		unsigned e = Z80_E(cpu);
+		if (e) console_putc(e);
 		returnCode(cpu, 0);
 	}		
 	
@@ -198,7 +217,6 @@ protected:
  * If the printer is permanently offline or busy, this call can hang.
  */
 	void listOutput();
-	
 /**
  * BDOS function 6 (C_RAWIO) - Direct console I/O
  * Supported by: CP/M 1.4 and later, with variations
@@ -214,12 +232,13 @@ protected:
  * Values of E not supported on a particular system will output the character. Under CP/M 2 and lower, direct console functions may interact undesirably with non-direct ones, since certain buffers may be bypassed. Do not mix them.
  */
 	void directConsoleIO(Z80& cpu) {
-		if (Z80_E(cpu) == 0xFF) {
-			char c;
-			const auto n = std::cin.readsome(&c, 1);
-			returnCode(cpu, n ? c : 0x00);
+	//	std::clog << std::endl << " directConsoleIO " << std::hex << (unsigned)(Z80_E(cpu)) << std::endl;
+
+		unsigned e = Z80_E(cpu) ;
+		if (e == 0xFF) {
+			returnCode(cpu, conctrl_getch());
 		} else {
-			std::cout << char(Z80_E(cpu));
+			console_putc(e);
 			returnCode(cpu, 0x00);	// ok
 		}
 	}
@@ -230,7 +249,10 @@ protected:
  * Entered with C=7. Returns I/O byte.
  * Here's a description of how the IOBYTE works. @see https://seasip.info/Cpm/iobyte.html
  */
-	void getIOByte();
+	void getIOByte(Z80& cpu, const uint8_t memory[]) {
+		std::clog << "Get I/O byte " << std::hex << memory[4] << "h" << std::endl;
+		returnCode(cpu, memory[4]); // A reg 
+	}
 	
 /**
  * BDOS function 8 - Set I/O byte
@@ -238,7 +260,10 @@ protected:
  * Entered with C=8, E=I/O byte.
  * Here's a description of how the IOBYTE works.
  */
-	void setIOByte();
+	void setIOByte(Z80& cpu, const uint8_t memory[]) {
+		std::clog << "Set I/O byte " << std::hex << Z80_E(cpu) << "h" << std::endl;
+		memory[4] = Z80_E(cpu);
+	}
 	
 /**
  * BDOS function 9 (C_WRITESTR) - Output string
@@ -254,7 +279,7 @@ protected:
 #endif
 		const auto* c = memory + Z80_DE(cpu);
 		while (*c != '$') {
-			std::cout << char(*(c++));
+			console_putc(*(c++));
 		}
 		returnCode(cpu, 0);
 	}
@@ -301,13 +326,7 @@ protected:
 		std::clog << "Console status" << std::endl;
 #endif
 		char c;
-		const auto n = std::cin.readsome(&c, 1);
-		if (!n) {
-			returnCode(cpu, 0x00);
-		} else {
-			std::cin.putback(c);
-			returnCode(cpu, 0xFF);
-		}
+		returnCode(cpu, conctrl_kbhit() ? 0xff : 0x00);
 	}
 	
 /**
@@ -417,8 +436,10 @@ protected:
 		s.close();	// in case of...
 		s.open(filename, std::ios::binary|std::ios::in);	// Open RO !
 		if (!s) {
+#if LOG
 			std::cerr << ">> Error opening file '" << filename << "': "
 					  << strerror(errno) << "!" << std::endl;
+#endif
 			returnCode(cpu, 0xFF);
 			releaseStream(Z80_DE(cpu));
 			return;
@@ -474,7 +495,6 @@ protected:
 
 		memcpy(filter, pFCB->filename, 11);
 		filter[11] = '\0';
-
 		const std::filesystem::path path(dir);
 		std::error_code ec;
 		di = std::filesystem::directory_iterator(path, ec);		// New directory_iterator
@@ -685,7 +705,30 @@ protected:
  * Renames the file specified to the new name, stored at FCB+16. This function cannot rename across drives so the "drive" bytes of both filenames should be identical. Returns A=0-3 if successful; A=0FFh if error. Under CP/M 3, if H is zero then the file could not be found; if it is nonzero it contains a hardware error number.
  * Under Concurrent CP/M, set F5' if an extended lock on the file should be held through the rename. Otherwise the lock will be released.
  */ 
- 	void renameFile(Z80& cpu, uint8_t memory[]);
+ 	void renameFile(Z80& cpu, uint8_t memory[]) {
+		assert(memory);
+		FCB_t *const pFCB1 = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
+		FCB_t *const pFCB2 = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu) + 16);
+#if LOG
+		std::clog << "Rename file (FCB1: " << std::hex << unsigned(Z80_DE(cpu)) << "h) (FCB2: " << std::hex << unsigned(Z80_DE(cpu) + 16) << "h) " << std::endl;
+#endif
+		char filename1[15];	// DIR + "/" + NAME + "." + EXT
+		fcbToFilename(pFCB1, (memory[USER_DRIVE] & 0x0F), filename1);
+		char filename2[15];	// DIR + "/" + NAME + "." + EXT
+		fcbToFilename(pFCB2, (memory[USER_DRIVE] & 0x0F), filename2);
+#if LOG
+		std::clog << "old filename " << filename1;
+		std::clog << "new filename " << filename2;
+#endif
+
+		if (std::rename(filename1, filename2))
+		{
+			std::perror("Error renaming");
+			returnCode(cpu, 0xFF);
+		}
+		returnCode(cpu, 0x00);
+
+	}
  	
 /**
  * BDOS function 24 (DRV_LOGINVEC) - Return bitmap of logged-in drives
@@ -823,8 +866,63 @@ protected:
 
 /**
  * BDOS function 33
+ * 
+ * Entered with C=21h, DE=FCB address. Returns error codes in BA and HL.
+ *
+ * Read the record specified in the random record count area of the FCB, at the DMA address. 
+ * The pointers in the FCB will be updated so that the next record to read using the sequential I/O 
+ * calls will be the record just read. Error numbers returned are:
+ * 
+ * 0 OK
+ * 1 Reading unwritten data
+ * 4 Reading unwritten extent (a 16k portion of file does not exist)
+ * 6 Record number out of range
+ * 9 Invalid FCB
+ * 10 Media changed (CP/M); FCB checksum error (MP/M),
+ * 11 Unlocked file verification error (MP/M), 0FFh
+ * 
  */
-	void readRandom(Z80& cpu, uint8_t *const memory);
+	void readRandom(Z80& cpu, uint8_t *const memory) {
+		assert(memory);
+		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
+		uint32_t r = pFCB->R[0] + (pFCB->R[1] << 8) + (pFCB->R[2] << 16);
+#if LOG
+		std::clog << "R[0]" << std::hex << unsigned(pFCB->R[0]) << std::endl;
+		std::clog << "R[1]" << std::hex << unsigned(pFCB->R[1]) << std::endl;
+		std::clog << "R[2]" << std::hex << unsigned(pFCB->R[2]) << std::endl;
+		std::clog << "Read random record " << std::hex << r << "h (FCB: " << std::hex << unsigned(Z80_DE(cpu)) << "h)" << std::endl;
+
+#endif
+		if (dma + SECTOR_SIZE >= MEMORY_SIZE * 1024) {
+			std::cerr << ">> Writing DMA out of memory!" << std::endl;
+			returnCode(cpu, 0xFF);	// OK
+			return;
+		}
+		std::fstream& s = getStream(Z80_DE(cpu));
+		s.seekg(r * SECTOR_SIZE);
+		s.read(reinterpret_cast<char*>(memory + dma), SECTOR_SIZE);
+		if (s) {
+			returnCode(cpu, 0x00);	// OK
+		} else {
+			if (s.eof()) {
+				if (s.gcount()) {		// few read
+					memset(memory + s.gcount(), 0xE5, SECTOR_SIZE - s.gcount());	// padding with 0xE5
+					returnCode(cpu, 0x00);	// OK - May be partial read
+				} else {
+					returnCode(cpu, 0x01);	// EOF - Nothing read
+				} 
+			} else {
+				std::cerr << ">> Error reading: " << strerror(errno) << "!" << std::endl;
+				
+				std::cerr << ">> " << s.gcount() << " bytes read" << std::endl;
+				std::cerr << ">> good: " << s.good() << std::endl;
+				std::cerr << ">> fail: " << s.fail() << std::endl;
+				std::cerr << ">> bad: " << s.bad() << std::endl;
+				std::cerr << ">> eof: " << s.eof() << std::endl;
+				returnCode(cpu, 0xFF);
+			}
+		}
+	}
 
 /**
  * BDOS function 34
@@ -839,7 +937,28 @@ protected:
 /**
  * BDOS function 36
  */
-	void setRandomRecord(Z80& cpu, uint8_t *const memory);
+	void setRandomRecord(Z80& cpu, uint8_t *const memory)  {
+		assert(memory);
+		FCB_t *const pFCB = reinterpret_cast<FCB_t *const>(memory + Z80_DE(cpu));
+		std::fstream& s = getStream(Z80_DE(cpu));
+		uint32_t p = s.tellg() / SECTOR_SIZE;
+
+		if (s) {
+			pFCB->R[0] = p & 0xff;
+			pFCB->R[1] = (p >> 8) & 0xff;
+			pFCB->R[2] = (p >> 16) & 0xff;
+			returnCode(cpu, 0x00);	// OK
+		} else {
+			std::cerr << ">> Error reading: " << strerror(errno) << "!" << std::endl;
+			
+			std::cerr << ">> " << s.gcount() << " bytes read" << std::endl;
+			std::cerr << ">> good: " << s.good() << std::endl;
+			std::cerr << ">> fail: " << s.fail() << std::endl;
+			std::cerr << ">> bad: " << s.bad() << std::endl;
+			std::cerr << ">> eof: " << s.eof() << std::endl;
+			returnCode(cpu, 0xFF);
+		}
+	}
 
 /**
  * BDOS function 37
@@ -920,7 +1039,7 @@ protected:
 		strcpy(dos, name);
 		
 		char ext[4];
-		memcpy(ext, cpm + 8, 3);
+		for(int i = 0; i < 4; ++i) ext[i] = toupper(cpm[i+8]);
 
 		if (ext[2] == ' ') {
 			if (ext[1] == ' ') {
@@ -963,6 +1082,7 @@ protected:
 			const auto& file = *di;		// Directory Entry
 			if (file.is_regular_file() && 
 				filenameDOS2CPM(file.path().filename().string().c_str(), filename)) {
+
 				filename[11] = '\0';
 		
 				bool ok = true;
